@@ -1,0 +1,29 @@
+---
+- name: Update and upgrade apt packages
+  hosts: all
+  serial: 1
+
+  tasks:
+    - name: Display Python version
+      ansible.builtin.debug:
+        msg: "Python version: {{ ansible_python.version.major }}.{{ ansible_python.version.minor }}"
+
+    - name: Update packages with apt
+      when: ansible_pkg_mgr == 'apt'
+      ansible.builtin.apt:
+        update_cache: true
+      become: true
+
+    - name: Upgrade packages with apt
+      when: ansible_pkg_mgr == 'apt'
+      ansible.builtin.apt:
+        upgrade: dist
+      become: true
+
+    - name: Reboot server
+      ansible.builtin.reboot:
+      become: true
+
+    - name: Wait for connection after reboot
+      ansible.builtin.wait_for_connection:
+        timeout: 300

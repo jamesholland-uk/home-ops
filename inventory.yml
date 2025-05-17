@@ -1,0 +1,28 @@
+singles:
+  hosts:
+    # ubuntu:
+    #   ansible_python_interpreter: /usr/bin/python3.8
+    ai:
+      ansible_python_interpreter: /usr/bin/python3.12
+    newbuntu:
+      ansible_python_interpreter: /usr/bin/python3.12
+    unifi-controller:
+      ansible_python_interpreter: /usr/bin/python3.8
+    plex02:
+      ansible_python_interpreter: /usr/bin/python3.12
+    ship:
+      ansible_python_interpreter: /usr/bin/python3.8
+    cloudsvr.jamoi.co.uk:
+      ansible_python_interpreter: /usr/bin/python3.8
+primary:
+  hosts:
+    pihole01:
+      ansible_python_interpreter: /usr/bin/python3.8
+    docker01:
+      ansible_python_interpreter: /usr/bin/python3.10
+secondary:
+  hosts:
+    pihole02:
+      ansible_python_interpreter: /usr/bin/python3.8
+    docker02:
+      ansible_python_interpreter: /usr/bin/python3.10
