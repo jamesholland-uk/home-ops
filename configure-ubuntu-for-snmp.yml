@@ -1,0 +1,73 @@
+---
+- name: Configure SNMP Daemon for Monitoring on Ubuntu VMs
+  hosts: all
+  serial: 1
+  become: true # Execute tasks with root privileges (sudo)
+
+  vars:
+    snmp_community_string: "cumbria" 
+    snmp_config_file: "/etc/snmp/snmpd.conf"
+
+  tasks:
+    - name: Ensure apt cache is updated
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600 # Cache valid for 1 hour
+
+    - name: Install SNMP Daemon (snmpd) package
+      ansible.builtin.apt:
+        name: snmpd
+        state: present
+
+    - name: Backup the original snmpd configuration file
+      ansible.builtin.copy:
+        src: "{{ snmp_config_file }}"
+        dest: "{{ snmp_config_file }}.bak"
+        remote_src: true # The source is on the remote host
+
+    - name: Remove all existing agentAddress lines (case-insensitively) to prevent duplicate binding errors
+      # CRITICAL FIX: The regex now handles both 'agentAddress' and 'agentaddress' (case-insensitive 'A's),
+      # guaranteeing that the default localhost binding is removed.
+      ansible.builtin.lineinfile:
+        path: "{{ snmp_config_file }}"
+        regexp: '^\s*#?\s*[Aa]gent[Aa]ddress\s+.*$'
+        state: absent 
+      notify: Restart snmpd
+
+    - name: Add the required 'agentAddress udp:161' binding to listen on all interfaces
+      # Now that all conflicting lines are removed, we add the single correct line.
+      # Using 'insertafter: sysServices' ensures correct placement in the configuration file.
+      ansible.builtin.lineinfile:
+        path: "{{ snmp_config_file }}"
+        line: 'agentAddress udp:161'
+        state: present
+        insertafter: '^sysServices\s+\d+$' 
+      notify: Restart snmpd
+
+    - name: Remove local binding from SNMPDOPTS in /etc/default/snmpd to resolve startup conflict
+      ansible.builtin.lineinfile:
+        path: /etc/default/snmpd
+        # Regex targets the existing SNMPDOPTS line
+        regexp: '^SNMPDOPTS=".*"'
+        # Replaces it with options that don't include an explicit IP address binding (like 127.0.0.1:161),
+        # allowing the configuration in snmpd.conf to take effect.
+        line: 'SNMPDOPTS="-LSD -f -p /var/run/snmpd.pid"' 
+        state: present
+      notify: Restart snmpd
+
+    - name: Add read-only community string '{{ snmp_community_string }}'
+      ansible.builtin.lineinfile:
+        path: "{{ snmp_config_file }}"
+        # Regex to prevent adding the line multiple times
+        regexp: "^rocommunity\\s+{{ snmp_community_string }}$"
+        # Adds the line if it doesn't exist, typically at the end of the file
+        line: "rocommunity {{ snmp_community_string }}"
+        state: present
+        insertafter: EOF
+      notify: Restart snmpd
+
+  handlers:
+    - name: Restart snmpd
+      ansible.builtin.service:
+        name: snmpd
+        state: restarted
