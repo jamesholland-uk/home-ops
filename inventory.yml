@@ -12,6 +12,8 @@ singles:
       ansible_python_interpreter: /usr/bin/python3.12
     ship:
       ansible_python_interpreter: /usr/bin/python3.8
+    netmonpi:
+      ansible_python_interpreter: /usr/bin/python3.13
     cloudsvr.jamoi.co.uk:
       ansible_python_interpreter: /usr/bin/python3.8
 primary:
