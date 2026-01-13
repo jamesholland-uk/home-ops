@@ -1,0 +1,56 @@
+---
+- name: Install Docker and dependencies
+  hosts: netmonpi
+  become: yes # Run commands with sudo privileges
+
+  tasks:
+    - name: Install necessary packages for Docker
+      ansible.builtin.apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG apt key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=arm64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Install Docker packages
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+
+    - name: Add 'your_username' to the docker group
+      ansible.builtin.user:
+        name: jamoi
+        groups: docker
+        append: yes
+
+    - name: Install Docker Compose (as a Python package)
+      ansible.builtin.pip:
+        name: docker-compose
+        state: present
+
+    - name: Copy Observium Docker Compose file
+      ansible.builtin.copy:
+        src: ./netmonpi-docker-compose.yml
+        dest: /home/jamoi/netmonpi/docker-compose.yml
+
+    - name: Deploy Observium stack
+      community.docker.docker_compose:
+        project_src: /home/jamoi/netmonpi
+        state: present

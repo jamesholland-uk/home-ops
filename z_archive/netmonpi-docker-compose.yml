@@ -1,0 +1,54 @@
+version: '3.7'
+
+services:
+  # ------------------------------------
+  # 1. Database Service (MariaDB)
+  # ------------------------------------
+  db:
+    image: mariadb:10.5
+    container_name: observium-db
+    restart: always
+    # Map a directory on the host to store the persistent database data
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
+    environment:
+      # --- IMPORTANT: Change these values! ---
+      - MYSQL_ROOT_PASSWORD=YourSecureRootPassword
+      - MYSQL_DATABASE=observium
+      - MYSQL_USER=observium
+      - MYSQL_PASSWORD=YourSecureDBPassword
+      - TZ=Europe/London  # <-- CHANGE TO YOUR TIMEZONE (e.g., America/New_York)
+    # The database does not need to be exposed externally
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # ------------------------------------
+  # 2. Observium Application Service
+  # ------------------------------------
+  observium:
+    image: mbixtech/observium:latest
+    container_name: observium-app
+    restart: always
+    # Expose the web interface (host_port:container_port)
+    ports:
+      - "8080:80"
+    # Map directories for RRD data (graphs) and logs
+    volumes:
+      - ./data/rrd:/opt/observium/rrd
+      - ./data/logs:/opt/observium/logs
+    environment:
+      # --- IMPORTANT: Change these values! ---
+      - OBSERVIUM_ADMIN_USER=admin
+      - OBSERVIUM_ADMIN_PASS=YourSecureAdminPassword
+      - TZ=Europe/London  # <-- Must match the database TZ
+      # Database connection settings (must match the 'db' service)
+      - OBSERVIUM_DB_HOST=db      # Uses the service name defined above
+      - OBSERVIUM_DB_USER=observium
+      - OBSERVIUM_DB_PASS=YourSecureDBPassword
+      - OBSERVIUM_DB_NAME=observium
+    # Ensure the Observium app waits for the database to be healthy
+    depends_on:
+      db:
+        condition: service_healthy
