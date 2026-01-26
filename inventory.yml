@@ -16,6 +16,8 @@ singles:
       ansible_python_interpreter: /usr/bin/python3.13
     cloudsvr.jamoi.co.uk:
       ansible_python_interpreter: /usr/bin/python3.8
+    jcloudsvr.duckdns.org:
+      ansible_python_interpreter: /usr/bin/python3.12
 primary:
   hosts:
     pihole01:

@@ -8,12 +8,10 @@
       ansible.builtin.debug:
         msg: "Python version: {{ ansible_python.version.major }}.{{ ansible_python.version.minor }}"
 
-    - name: Update packages with apt
+    - name: Update packages with apt (allow releaseinfo change)
       when: ansible_pkg_mgr == 'apt'
-      ansible.builtin.apt:
-        update_cache: true
-        allow_releaseinfo_change: true
-        cache_valid_time: 3600
+      ansible.builtin.command:
+        cmd: apt-get update --allow-releaseinfo-change
       become: true
 
     - name: Upgrade packages with apt
