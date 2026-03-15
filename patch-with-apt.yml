@@ -6,18 +6,25 @@
   tasks:
     - name: Display Python version
       ansible.builtin.debug:
-        msg: "Python version: {{ ansible_python.version.major }}.{{ ansible_python.version.minor }}"
+        msg: "Python version: {{ ansible_facts['python']['version']['major'] }}.{{ ansible_facts['python']['version']['minor'] }}"
 
     - name: Update packages with apt (allow releaseinfo change)
-      when: ansible_pkg_mgr == 'apt'
+      when: ansible_facts['pkg_mgr'] == 'apt'
       ansible.builtin.command:
         cmd: apt-get update --allow-releaseinfo-change
       become: true
 
     - name: Upgrade packages with apt
-      when: ansible_pkg_mgr == 'apt'
+      when: ansible_facts['pkg_mgr'] == 'apt'
       ansible.builtin.apt:
         upgrade: dist
+      become: true
+
+    - name: Remove unused dependency packages and clear cache
+      when: ansible_facts['pkg_mgr'] == 'apt'
+      ansible.builtin.apt:
+        autoremove: yes
+        autoclean: yes
       become: true
 
     - name: Reboot server
