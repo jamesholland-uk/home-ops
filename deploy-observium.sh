@@ -17,6 +17,7 @@ MYSQL_USER_PASS="ChangeMeUser"
 OBSERVIUM_ADMIN_USER="admin"
 OBSERVIUM_ADMIN_PASS="ChangeMeAdmin"
 DB_DUMP="${MOUNT_POINT}/container_storage/observium/backups/observium_devices.sql"
+SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/CHANGE/ME/PLEASE}"
 CURRENT_IP=$(hostname -I | awk '{print $1}')
 
 echo "========================================================"
@@ -63,11 +64,16 @@ fi
 echo "--> Configuring NAS Mount..."
 mkdir -p "$MOUNT_POINT"
 
-if ! grep -q "$NAS_SERVER" /etc/fstab; then
-    echo "Adding entry to /etc/fstab..."
-    echo "$NAS_SERVER:$NAS_PATH $MOUNT_POINT nfs rw,auto,async,_netdev 0 0" >> /etc/fstab
+# soft mount prevents system-wide hangs if NAS becomes unreachable
+NFS_OPTS="nfs rw,soft,timeo=50,retrans=3,async,_netdev 0 0"
+NFS_LINE="$NAS_SERVER:$NAS_PATH $MOUNT_POINT $NFS_OPTS"
+
+if grep -q "$NAS_SERVER" /etc/fstab; then
+    echo "Updating existing NAS entry in /etc/fstab..."
+    sed -i "\|$NAS_SERVER|c\\$NFS_LINE" /etc/fstab
 else
-    echo "Entry already exists in /etc/fstab, skipping..."
+    echo "Adding NAS entry to /etc/fstab..."
+    echo "$NFS_LINE" >> /etc/fstab
 fi
 
 mount -a || true
@@ -79,7 +85,29 @@ mkdir -p "$MOUNT_POINT/container_storage/observium/"{logs,rrd,backups} || true
 # Note: We don't chmod here - Docker volumes handle permissions automatically
 
 # ========================================================
-# 2.5. CONFIGURE SNMP ON HOST
+# 2.5. CREATE SWAP FILE (safety net for memory pressure)
+# ========================================================
+
+SWAP_FILE="/swapfile"
+SWAP_SIZE="1G"
+
+if [ ! -f "$SWAP_FILE" ]; then
+    echo "--> Creating ${SWAP_SIZE} swap file..."
+    fallocate -l "$SWAP_SIZE" "$SWAP_FILE"
+    chmod 600 "$SWAP_FILE"
+    mkswap "$SWAP_FILE"
+    swapon "$SWAP_FILE"
+    if ! grep -q "$SWAP_FILE" /etc/fstab; then
+        echo "$SWAP_FILE none swap sw 0 0" >> /etc/fstab
+    fi
+    echo "Swap enabled: ${SWAP_SIZE}"
+else
+    echo "--> Swap file already exists, ensuring it's active..."
+    swapon "$SWAP_FILE" 2>/dev/null || true
+fi
+
+# ========================================================
+# 2.6. CONFIGURE SNMP ON HOST
 # ========================================================
 
 echo "--> Configuring SNMP on host..."
@@ -412,21 +440,120 @@ sudo docker exec observium-app /opt/observium/adduser.php "${OBSERVIUM_ADMIN_USE
 # ========================================================
 
 echo "--> Setting up cron jobs..."
+mkdir -p /var/log/observium
+
 cat <<EOF > /etc/cron.d/observium-docker
-# Discovery and Polling (run via docker exec)
-33  */6   * * * root  sudo docker exec observium-app /opt/observium/observium-wrapper discovery -h all >> ${MOUNT_POINT}/container_storage/observium/logs/cron-discovery-all.log 2>&1
-*/5 * * * * root  sudo docker exec observium-app /opt/observium/observium-wrapper discovery -h new >> ${MOUNT_POINT}/container_storage/observium/logs/cron-discovery-new.log 2>&1
-*/5 * * * * root  sudo docker exec observium-app /opt/observium/observium-wrapper poller -w 16 >> ${MOUNT_POINT}/container_storage/observium/logs/cron-poller-wrapper.log 2>&1
+SHELL=/bin/bash
 
-# Housekeeping
-13  5     * * * root  sudo docker exec observium-app /usr/bin/php /opt/observium/housekeeping.php -ysel >> ${MOUNT_POINT}/container_storage/observium/logs/cron-housekeeping-ysel.log 2>&1
-47  4     * * * root  sudo docker exec observium-app /usr/bin/php /opt/observium/housekeeping.php -yrptb >> ${MOUNT_POINT}/container_storage/observium/logs/cron-housekeeping-yrptb.log 2>&1
+# flock -n: skip if previous run still active (prevents pile-up)
+# timeout: kill if hung (prevents infinite NFS stalls)
+# Logs go to local disk, not NAS, so logging itself can't hang
 
-# Daily Database Backup to NAS
-0   1     * * * root  sudo docker exec -e MYSQL_PWD='${MYSQL_ROOT_PASS}' observium-db mysqldump -u root observium > ${DB_DUMP}
+# Discovery - all hosts (every 6h, 30min timeout)
+33  */6   * * * root  flock -n /tmp/observium-discovery-all.lock timeout 1800 sudo docker exec observium-app /opt/observium/observium-wrapper discovery --host all >> /var/log/observium/discovery-all.log 2>&1
+
+# Discovery - new hosts (every 5min, 4min timeout)
+*/5 * * * * root  flock -n /tmp/observium-discovery-new.lock timeout 240 sudo docker exec observium-app /opt/observium/observium-wrapper discovery --host new >> /var/log/observium/discovery-new.log 2>&1
+
+# Poller (every 5min, 4min timeout)
+*/5 * * * * root  flock -n /tmp/observium-poller.lock timeout 240 sudo docker exec observium-app /opt/observium/observium-wrapper poller -w 16 >> /var/log/observium/poller.log 2>&1
+
+# Housekeeping (daily, 1h timeout)
+13  5     * * * root  timeout 3600 sudo docker exec observium-app /usr/bin/php /opt/observium/housekeeping.php -ysel >> /var/log/observium/housekeeping.log 2>&1
+47  4     * * * root  timeout 3600 sudo docker exec observium-app /usr/bin/php /opt/observium/housekeeping.php -yrptb >> /var/log/observium/housekeeping.log 2>&1
+
+# Daily DB backup: dump locally first, then copy to NAS (avoids NFS hang during redirect)
+0   1     * * * root  timeout 300 sudo docker exec -e MYSQL_PWD='${MYSQL_ROOT_PASS}' observium-db mysqldump -u root observium > /tmp/observium_backup.sql && timeout 60 cp /tmp/observium_backup.sql ${DB_DUMP} >> /var/log/observium/backup.log 2>&1
 EOF
 
 systemctl restart cron || true
+
+# ========================================================
+# 12.5. HEALTH CHECK SCRIPT WITH SLACK ALERTS
+# ========================================================
+
+echo "--> Installing health check script..."
+
+cat <<'HEALTHEOF' > /usr/local/bin/observium-healthcheck.sh
+#!/bin/bash
+STATE_DIR="/var/run/observium-health"
+mkdir -p "$STATE_DIR"
+
+WEBHOOK_URL="__SLACK_WEBHOOK__"
+HOSTNAME=$(hostname)
+PROBLEMS=()
+
+# --- Check NFS mount ---
+if ! timeout 10 stat /home/jamoi/NAS > /dev/null 2>&1; then
+    PROBLEMS+=("NFS mount /home/jamoi/NAS is unresponsive")
+fi
+
+# --- Check Docker containers ---
+for ctr in observium-app observium-db; do
+    if ! docker ps --format '{{.Names}}' | grep -q "^${ctr}$"; then
+        PROBLEMS+=("Container ${ctr} is not running")
+    fi
+done
+
+# --- Check swap usage (>50% = memory pressure warning) ---
+SWAP_TOTAL=$(free -m | awk '/Swap:/ {print $2}')
+SWAP_USED=$(free -m | awk '/Swap:/ {print $3}')
+if [ "$SWAP_TOTAL" -gt 0 ] 2>/dev/null; then
+    SWAP_PCT=$(( SWAP_USED * 100 / SWAP_TOTAL ))
+    if [ "$SWAP_PCT" -gt 50 ]; then
+        PROBLEMS+=("Swap usage is ${SWAP_PCT}% (${SWAP_USED}MB/${SWAP_TOTAL}MB) — possible memory pressure")
+    fi
+fi
+
+# --- Check SD card usage (>85%) ---
+DISK_PCT=$(df / --output=pcent | tail -1 | tr -d ' %')
+if [ "$DISK_PCT" -gt 85 ] 2>/dev/null; then
+    PROBLEMS+=("SD card usage is ${DISK_PCT}%")
+fi
+
+# --- Alert logic: only notify on state changes ---
+CURRENT_STATE="healthy"
+if [ ${#PROBLEMS[@]} -gt 0 ]; then
+    CURRENT_STATE="unhealthy"
+fi
+
+PREV_STATE="healthy"
+[ -f "$STATE_DIR/state" ] && PREV_STATE=$(cat "$STATE_DIR/state")
+
+if [ "$CURRENT_STATE" = "unhealthy" ] && [ "$PREV_STATE" = "healthy" ]; then
+    DETAIL=$(printf '• %s\\n' "${PROBLEMS[@]}")
+    PAYLOAD=$(cat <<JSON
+{"text":":rotating_light: *Observium Health Alert — ${HOSTNAME}*\n${DETAIL}\nTimestamp: $(date '+%Y-%m-%d %H:%M:%S %Z')"}
+JSON
+)
+    curl -s -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL" > /dev/null 2>&1
+    echo "$(date) ALERT: ${PROBLEMS[*]}" >> /var/log/observium/healthcheck.log
+
+elif [ "$CURRENT_STATE" = "healthy" ] && [ "$PREV_STATE" = "unhealthy" ]; then
+    PAYLOAD=$(cat <<JSON
+{"text":":white_check_mark: *Observium Recovered — ${HOSTNAME}*\nAll checks passing.\nTimestamp: $(date '+%Y-%m-%d %H:%M:%S %Z')"}
+JSON
+)
+    curl -s -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL" > /dev/null 2>&1
+    echo "$(date) RECOVERED" >> /var/log/observium/healthcheck.log
+fi
+
+echo "$CURRENT_STATE" > "$STATE_DIR/state"
+HEALTHEOF
+
+# Inject the actual webhook URL
+sed -i "s|__SLACK_WEBHOOK__|${SLACK_WEBHOOK_URL}|" /usr/local/bin/observium-healthcheck.sh
+chmod +x /usr/local/bin/observium-healthcheck.sh
+
+# Add health check to cron (every 5 minutes)
+cat <<'HCEOF' >> /etc/cron.d/observium-docker
+
+# Health check with Slack alerts (every 5min)
+*/5 * * * * root  /usr/local/bin/observium-healthcheck.sh
+HCEOF
+
+systemctl restart cron || true
+echo "Health check installed with Slack notifications"
 
 # ========================================================
 # 13. INITIALIZE OBSERVIUM DATABASE
