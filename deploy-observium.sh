@@ -6,6 +6,13 @@ set -e
 # Avoids NAS permission issues by using Docker volumes
 # ========================================================
 
+# --- LOAD LOCAL SECRETS (not committed to git) ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/.env"
+fi
+
 # --- VARIABLES ---
 PI_USER="jamoi"
 NAS_SERVER="nas2.jamoi.xyz"
@@ -17,7 +24,7 @@ MYSQL_USER_PASS="ChangeMeUser"
 OBSERVIUM_ADMIN_USER="admin"
 OBSERVIUM_ADMIN_PASS="ChangeMeAdmin"
 DB_DUMP="${MOUNT_POINT}/container_storage/observium/backups/observium_devices.sql"
-SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/CHANGE/ME/PLEASE}"
+SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:?ERROR: SLACK_WEBHOOK_URL not set. Create a .env file with SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...}"
 CURRENT_IP=$(hostname -I | awk '{print $1}')
 
 echo "========================================================"

@@ -1,0 +1,39 @@
+# GCP Project Configuration
+project_id = "your-gcp-project-id"
+
+# Region and Zone Configuration
+# FREE TIER REGIONS (us-east1, us-west1, us-central1)
+region = "us-east1" # South Carolina - closest US region to UK
+zone   = "us-east1-b"
+
+# PAID REGIONS (if you prefer European location ~$6/month)
+# region = "europe-west2"  # London, UK
+# zone   = "europe-west2-a"
+
+# Instance Configuration
+instance_name = "ubuntu-cloud-server"
+machine_type  = "e2-micro" # Free tier eligible
+
+# SSH Configuration
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+ssh_user            = "ubuntu"
+
+# Duck DNS Configuration
+# Get your token from: https://www.duckdns.org/
+duckdns_domain = "your-subdomain"     # Without .duckdns.org
+duckdns_token  = "your-duckdns-token"
+
+# Disk Configuration (Free Tier: 30GB standard persistent disk)
+disk_size_gb = 30
+disk_type    = "pd-standard"
+
+# Network Configuration
+network_tags = ["ssh-server", "http-server", "https-server"]
+enable_http  = false # Set to true if you need HTTP access
+enable_https = false # Set to true if you need HTTPS access
+
+# Terraform State Backend Configuration
+# GCS bucket name for storing Terraform state (must be globally unique)
+# Format: terraform-state-YOUR_PROJECT_ID
+# This bucket will be created automatically if it doesn't exist (via backend.tf)
+terraform_state_bucket_name = "terraform-state-your-gcp-project-id"

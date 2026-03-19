@@ -1,5 +1,6 @@
 # Local .terraform directories
 **/.terraform/*
+*/.terraform.lock.hcl
 
 # .tfstate files
 *.tfstate
@@ -13,6 +14,8 @@ crash.log
 # version control.
 #
 # example.tfvars
+*/terraform.tfvars
+
 
 # Ignore override files as they are usually used to override resources locally and so
 # are not checked in
@@ -31,3 +34,9 @@ override.tf.json
 
 # Virtual Env
 venv/*
+
+# Local secrets
+.env
+
+# macOS
+.DS_Store
