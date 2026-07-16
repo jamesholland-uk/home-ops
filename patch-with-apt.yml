@@ -27,6 +27,14 @@
         autoclean: yes
       become: true
 
+    - name: Upgrade Pi-hole
+      when:
+        - ansible_facts['pkg_mgr'] == 'apt'
+        - inventory_hostname in groups['piholes']
+      ansible.builtin.command:
+        cmd: pihole -up
+      become: true
+
     - name: Reboot server
       ansible.builtin.reboot:
       become: true

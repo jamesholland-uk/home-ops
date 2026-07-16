@@ -18,3 +18,7 @@ secondary:
   hosts:
     pihole02:
     docker02:
+piholes:
+  hosts:
+    pihole01:
+    pihole02:
