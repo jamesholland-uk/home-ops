@@ -279,12 +279,9 @@ fi
 # Ensure directories exist (rrd and logs are NAS-mounted, don't chown them)
 mkdir -p /opt/observium/rrd /opt/observium/logs
 
-# Only chown specific local directories, never touch rrd/logs (they're NAS-mounted)
-# This avoids hanging on NFS operations
-for dir in html includes libs mibs scripts tests update; do
-    [ -d "/opt/observium/$dir" ] && chown -R www-data:www-data "/opt/observium/$dir" 2>/dev/null || true
-done
-# Chown config.php and other files in root
+# Apache only needs html/. Recursive chown of mibs/ and includes/ hangs in
+# D-state on the Pi: those trees contain read-only bind mounts for the WD overlay.
+chown -R www-data:www-data /opt/observium/html 2>/dev/null || true
 chown www-data:www-data /opt/observium/config.php 2>/dev/null || true
 chown www-data:www-data /opt/observium/*.php 2>/dev/null || true
 chown www-data:www-data /opt/observium/*.py 2>/dev/null || true
@@ -651,18 +648,20 @@ echo "Health check installed with Slack notifications"
 # 13. INITIALIZE OBSERVIUM DATABASE
 # ========================================================
 
-echo "--> Waiting for Observium app (overlay + Apache)..."
-WAIT_APP=30
+echo "--> Waiting for Apache in observium-app..."
+WAIT_APP=60
 while [ $WAIT_APP -gt 0 ]; do
-    if sudo docker exec observium-app grep -q HOMEOPS_WD_CENTIGRADE /opt/observium/includes/snmp.inc.php 2>/dev/null; then
-        break
-    fi
     if sudo docker exec observium-app pgrep apache2 >/dev/null 2>&1; then
+        echo "✅ Apache is running"
         break
     fi
     sleep 2
     WAIT_APP=$((WAIT_APP-1))
 done
+if [ "$WAIT_APP" -eq 0 ]; then
+    echo "⚠️  Apache did not start within 120s"
+    sudo docker logs observium-app --tail 40 2>&1 || true
+fi
 
 echo "--> Initializing Observium database schema..."
 sudo docker exec observium-app /opt/observium/discovery.php -u
