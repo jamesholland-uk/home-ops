@@ -1,0 +1,859 @@
+--
+-- MYCLOUDEX2ULTRA.mib
+--
+
+-- Copyright (c) 2013 WD Inc.,
+-- Module Name: MYCLOUDEX2ULTRA.mib
+-- Abstract:
+-- Defines the MYCLOUDEX2ULTRA MIBs .
+--
+
+	MYCLOUDEX2ULTRA-MIB DEFINITIONS ::= BEGIN
+
+
+	IMPORTS
+		OBJECT-TYPE, Integer32, enterprises,
+		NOTIFICATION-TYPE
+			FROM SNMPv2-SMI
+		DisplayString
+			FROM SNMPv2-TC;
+
+--
+--  OID definitions
+--
+
+	WD		OBJECT IDENTIFIER ::= { enterprises 5127}
+	productID	OBJECT IDENTIFIER ::= { WD 1}
+	projectID	OBJECT IDENTIFIER ::= { productID 1}
+	modelID 	OBJECT IDENTIFIER ::= { projectID 1}
+	submodelID	OBJECT IDENTIFIER ::= { modelID 8}
+	nasAgent	OBJECT IDENTIFIER ::= { submodelID 1}
+
+
+--
+-- Node definitions
+--
+			mycloudex2ultraAgentVer OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"Version information for the agent of SNMP of MYCLOUDEX2ULTRA."
+				::= { nasAgent 1 }
+
+-- ============================================================================
+
+--
+-- system information definitions
+--
+			mycloudex2ultraSoftwareVersion OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"The device software version."
+				::= { nasAgent 2 }
+
+			mycloudex2ultraHostName OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"The device host name."
+				::= { nasAgent 3 }
+
+
+			mycloudex2ultraFTPServer OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"Ftp Server status.
+					1 : enable
+					0 : disable
+					"
+				::= { nasAgent 5 }
+
+			mycloudex2ultraNetType OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"The Network type.
+					0 : Workgroup
+					1 : Active Directory"
+				::= { nasAgent 6 }
+
+			mycloudex2ultraTemperature OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"The temperature of the system."
+				::= { nasAgent 7 }
+
+			mycloudex2ultraFanStatus OBJECT-TYPE
+				SYNTAX DisplayString
+				MAX-ACCESS read-only
+				STATUS current
+				DESCRIPTION
+					"The status of the fan0."
+				::= { nasAgent 8 }
+
+-- ============================================================================
+
+			mycloudex2ultraVolumeTable OBJECT-TYPE
+			SYNTAX SEQUENCE OF Mycloudex2ultraVolumeEntry
+			MAX-ACCESS not-accessible
+			STATUS current
+			DESCRIPTION
+				"A table of active volumes on the NAS device."
+			::= { nasAgent 9 }
+
+			mycloudex2ultraVolumeEntry OBJECT-TYPE
+			SYNTAX Mycloudex2ultraVolumeEntry
+			MAX-ACCESS not-accessible
+			STATUS current
+			DESCRIPTION
+				"An entry in the volume table."
+			INDEX { mycloudex2ultraVolumeNum }
+			::= { mycloudex2ultraVolumeTable 1 }
+
+			Mycloudex2ultraVolumeEntry ::=
+			SEQUENCE {
+				mycloudex2ultraVolumeNum
+					Integer32,
+				mycloudex2ultraVolumeName
+					DisplayString,
+				mycloudex2ultraVolumeFsType
+					DisplayString,
+				mycloudex2ultraVolumeRaidLevel
+					DisplayString,
+				mycloudex2ultraVolumeSize
+					DisplayString,
+				mycloudex2ultraVolumeFreeSpace
+					DisplayString
+			 }
+
+			mycloudex2ultraVolumeNum OBJECT-TYPE
+			SYNTAX Integer32
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"Instance number of the volume entry."
+			::= { mycloudex2ultraVolumeEntry 1 }
+
+			mycloudex2ultraVolumeName OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The name of the volume."
+			::= { mycloudex2ultraVolumeEntry 2 }
+
+			mycloudex2ultraVolumeFsType OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The type of file system of the volume.
+				Example : ext3 or ext4"
+			::= { mycloudex2ultraVolumeEntry 3 }
+
+			mycloudex2ultraVolumeRaidLevel OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The RAID level of the volume. (JBOD SPANNING RAID0 RAID1 RAID5 RAID10 RAID5+SPARE)"
+			::= { mycloudex2ultraVolumeEntry 4 }
+
+			mycloudex2ultraVolumeSize OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The size of the volume in bytes."
+			::= { mycloudex2ultraVolumeEntry 5 }
+
+			mycloudex2ultraVolumeFreeSpace OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"Free space on the volume in bytes."
+			::= { mycloudex2ultraVolumeEntry 6 }
+
+-- ============================================================================
+
+		mycloudex2ultraDiskTable OBJECT-TYPE
+			SYNTAX SEQUENCE OF Mycloudex2ultraDiskEntry
+			MAX-ACCESS not-accessible
+			STATUS current
+			DESCRIPTION
+				"A table of physical disks attached to the NAS device."
+			::= { nasAgent 10 }
+
+		mycloudex2ultraDiskEntry OBJECT-TYPE
+			SYNTAX Mycloudex2ultraDiskEntry
+			MAX-ACCESS not-accessible
+			STATUS current
+			DESCRIPTION
+				"An entry in the physical disk table."
+			INDEX { mycloudex2ultraDiskNum }
+			::= { mycloudex2ultraDiskTable 1 }
+
+		Mycloudex2ultraDiskEntry ::=
+			SEQUENCE {
+				mycloudex2ultraDiskNum
+					Integer32,
+				mycloudex2ultraDiskVendor
+					DisplayString,
+				mycloudex2ultraDiskModel
+					DisplayString,
+				mycloudex2ultraDiskSerialNumber
+					DisplayString,
+        		mycloudex2ultraDiskTemperature
+					DisplayString,
+				mycloudex2ultraDiskCapacity
+					DisplayString
+			 }
+
+		mycloudex2ultraDiskNum OBJECT-TYPE
+			SYNTAX Integer32
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"Instance number of the disk entry."
+			::= { mycloudex2ultraDiskEntry 1 }
+
+		mycloudex2ultraDiskVendor OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The vendor of the disk drive."
+			::= { mycloudex2ultraDiskEntry 2 }
+
+		mycloudex2ultraDiskModel OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The disk drive's model name."
+			::= { mycloudex2ultraDiskEntry 3 }
+
+		mycloudex2ultraDiskSerialNumber OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The disk drive's serial number."
+			::= { mycloudex2ultraDiskEntry 4 }
+
+		mycloudex2ultraDiskTemperature OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The centigrade temperature of this disk."
+			::= { mycloudex2ultraDiskEntry 5 }
+
+		mycloudex2ultraDiskCapacity OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The capacity of the disk in GB."
+			::= { mycloudex2ultraDiskEntry 6 }
+
+
+-- ============================================================================
+
+		mycloudex2ultraUPSTable OBJECT-TYPE
+			SYNTAX SEQUENCE OF Mycloudex2ultraUPSEntry
+			MAX-ACCESS not-accessible
+			STATUS current
+			DESCRIPTION
+				"A table of UPS attached to the NAS device."
+			::= { nasAgent 11 }
+
+		mycloudex2ultraUPSEntry OBJECT-TYPE
+			SYNTAX Mycloudex2ultraUPSEntry
+			MAX-ACCESS not-accessible
+			STATUS current
+			DESCRIPTION
+				"An entry in the UPS table."
+			INDEX { mycloudex2ultraUPSNum }
+			::= { mycloudex2ultraUPSTable 1 }
+
+		Mycloudex2ultraUPSEntry ::=
+			SEQUENCE {
+				mycloudex2ultraUPSNum
+					Integer32,
+				mycloudex2ultraUPSMode
+					DisplayString,
+				mycloudex2ultraUPSManufacturer
+					DisplayString,
+				mycloudex2ultraUPSProduct
+					DisplayString,
+				mycloudex2ultraUPSBatteryCharge
+					DisplayString,
+				mycloudex2ultraUPSStatus
+					DisplayString,
+			 }
+
+		mycloudex2ultraUPSNum OBJECT-TYPE
+			SYNTAX Integer32
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"Instance number of the UPS entry."
+			::= { mycloudex2ultraUPSEntry 1 }
+
+		mycloudex2ultraUPSMode OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The mode of the UPS "
+			::= { mycloudex2ultraUPSEntry 2 }
+
+		mycloudex2ultraUPSManufacturer OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The manufacturer of the UPS."
+			::= { mycloudex2ultraUPSEntry 3 }
+
+		mycloudex2ultraUPSProduct OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The product name of the UPS."
+			::= { mycloudex2ultraUPSEntry 4 }
+
+		mycloudex2ultraUPSBatteryCharge OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The battery charge of the UPS."
+			::= { mycloudex2ultraUPSEntry 5 }
+
+		mycloudex2ultraUPSStatus OBJECT-TYPE
+			SYNTAX DisplayString
+			MAX-ACCESS read-only
+			STATUS current
+			DESCRIPTION
+				"The status of this UPS."
+			::= { mycloudex2ultraUPSEntry 6 }
+
+
+
+-- ============================================================================
+--
+--  Notifications
+--
+
+	notifyEvts OBJECT IDENTIFIER ::= { nasAgent 200 }
+
+	notifyPasswdChanged        NOTIFICATION-TYPE
+    STATUS      current
+    DESCRIPTION
+        "An indication that the Administrator's password has been changed."
+    ::= { notifyEvts 1 }
+
+    notifyFirmwareUpgraded     NOTIFICATION-TYPE
+    STATUS      current
+    DESCRIPTION
+        "An indication that firmware has been upgraded."
+    ::= { notifyEvts 2 }
+
+    notifyNetworkChanged        NOTIFICATION-TYPE
+    STATUS      current
+    DESCRIPTION
+        "An indication that the network settings has been changed."
+    ::= { notifyEvts 3 }
+
+    notifyTemperatureExceeded        NOTIFICATION-TYPE
+    STATUS      current
+    DESCRIPTION
+        "An indication that system temperature has exceeded."
+    ::= { notifyEvts 4 }
+
+	notifyVolumeNum OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "Instance number of the volume entry."
+        ::= { notifyEvts 200 }
+    
+    notifyUPSBatteryCharge OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "The battery charge percentage."
+        ::= { notifyEvts 201 }
+    
+    notifyBayNum OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "The bay number."
+        ::= { notifyEvts 202 }
+		
+	notifyPercent OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "Percentage of completion."
+        ::= { notifyEvts 203 }
+	
+	notifyMinutes OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "Estimated time of completion."
+        ::= { notifyEvts 204 }
+    
+	notifyPowerSupportNum OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "Instance number of the power support entry."
+        ::= { notifyEvts 205 }
+		
+	notifyInterfaceNum OBJECT-TYPE
+        SYNTAX Integer32
+        MAX-ACCESS read-only
+        STATUS current
+        DESCRIPTION
+            "Instance number of the network interface."
+        ::= { notifyEvts 206 }
+	
+	notifyVendor OBJECT-TYPE
+		SYNTAX DisplayString
+		MAX-ACCESS read-only
+		STATUS current
+		DESCRIPTION
+			"The vendor name of the USB device."
+		::= { notifyEvts 210 }
+		
+	notifyModel OBJECT-TYPE
+		SYNTAX DisplayString
+		MAX-ACCESS read-only
+		STATUS current
+		DESCRIPTION
+			"The model of the USB device."
+		::= { notifyEvts 211 }
+		
+	notifySerialNumber OBJECT-TYPE
+		SYNTAX DisplayString
+		MAX-ACCESS read-only
+		STATUS current
+		DESCRIPTION
+			"The serial number of the USB device."
+		::= { notifyEvts 212 }
+		
+	notifyFileSystem OBJECT-TYPE
+		SYNTAX DisplayString
+		MAX-ACCESS read-only
+		STATUS current
+		DESCRIPTION
+			"The file system of the USB device."
+		::= { notifyEvts 213 }
+
+	notifyLabel OBJECT-TYPE
+		SYNTAX DisplayString
+		MAX-ACCESS read-only
+		STATUS current
+		DESCRIPTION
+			"The label of the USB device."
+		::= { notifyEvts 214 }
+		
+	notifyUserName OBJECT-TYPE
+		SYNTAX DisplayString
+		MAX-ACCESS read-only
+		STATUS current
+		DESCRIPTION
+			"User name."
+		::= { notifyEvts 215 }
+
+    notifySystemOverTemperature        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system temperature is above the specific maximum temperature."
+        ::= { notifyEvts  101}
+
+    notifyVolumeUsageIsAbove95Percent        NOTIFICATION-TYPE
+		OBJECTS { notifyVolumeNum }
+        STATUS      current
+        DESCRIPTION
+            "The volume usage is above 95%."
+        ::= { notifyEvts  102}
+		
+    notifySystemUnderTemperature        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system temperature is below the specific minimum temperature."
+        ::= { notifyEvts 104}
+
+    notifyNetworkLinkDown        NOTIFICATION-TYPE
+		OBJECTS { notifyInterfaceNum }
+        STATUS      current
+        DESCRIPTION
+            "The network link is down or has become intermittent."
+        ::= { notifyEvts  105}
+
+    notifyNewFirmwareAvailable        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "A new version of firmware has been released."
+        ::= { notifyEvts  106}
+
+    notifyDriveSMARTfailure        NOTIFICATION-TYPE
+        OBJECTS { notifyBayNum }
+        STATUS      current
+        DESCRIPTION
+            "Drive self-check failed."
+        ::= { notifyEvts  107}
+		
+    notifyFirmwareUpdateFailed        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The firmware update failed."
+        ::= { notifyEvts  108}
+
+    notifyTemperatureNormal        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system temperature is within the normal specified temperature range."
+        ::= { notifyEvts  109}
+		
+    notifyVolumeFailure        NOTIFICATION-TYPE
+        OBJECTS { notifyVolumeNum }
+        STATUS      current
+        DESCRIPTION
+            "The data volume on the drive is not accessible."
+        ::= { notifyEvts  110}
+
+    notifyHighSystemTemperature        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Your device is currently overheated."
+        ::= { notifyEvts  111}
+		
+    notifyFirmwareUpdateSuccessful        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The firmware update was successful."
+        ::= { notifyEvts  112}
+		
+    notifyPendingThermalshutdown        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Your device is overheated and will shut down automatically in 1 hour if no action is taken."
+        ::= { notifyEvts  113}
+
+    notifyFactoryRestoreSucceeded        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Your system is restored to its factory defaults."
+        ::= { notifyEvts  114}
+    
+    notifySystemShuttingDown        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system is shutting down."
+        ::= { notifyEvts  118}
+		
+    notifyRestoreConfigFailed        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Restoring configuration failed."
+        ::= { notifyEvts  119}
+		
+    notifyPowerSupplyFailure        NOTIFICATION-TYPE
+		OBJECTS { notifyPowerSupportNum }
+        STATUS      current
+        DESCRIPTION
+            "Power supply failed."
+        ::= { notifyEvts  120}
+		
+    notifyDownloadingFirmwareUpdate        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Downloading firmware update."
+        ::= { notifyEvts  121}
+
+    notifyInstallingFirmwareUpdate        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Installing firmware update."
+        ::= { notifyEvts  122}
+    
+    notifyRebootRequired        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Reboot required."
+        ::= { notifyEvts  123}
+		
+    notifyFanNotWorking        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system fan is not working."
+        ::= { notifyEvts  124}
+
+    notifyStorageBelowThreshold        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Storage below threshold."
+        ::= { notifyEvts  125}
+		
+    notifyOnUPSPower        NOTIFICATION-TYPE
+        OBJECTS { notifyUPSBatteryCharge }
+        STATUS      current
+        DESCRIPTION
+            "On UPS Power"
+        ::= { notifyEvts  126}
+
+    notifySystemIsInStandbyMode        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "System is in standby mode."
+        ::= { notifyEvts  127}
+		
+    notifySystemRebooting        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "System Rebooting."
+        ::= { notifyEvts  128}
+
+    notifyFileSystemCheckFailed        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Scan Disk has detected file system errors on your drive configuration."
+        ::= { notifyEvts  130}
+
+    notifySystemNotReady        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system is busy."
+        ::= { notifyEvts  131}
+
+    notifyStorageAlmostFull        NOTIFICATION-TYPE
+		OBJECTS { notifyUsername }
+        STATUS      current
+        DESCRIPTION
+            "Storage almost full"
+        ::= { notifyEvts  132}
+		
+    notifyStorageLimitReached        NOTIFICATION-TYPE
+		OBJECTS { notifyUsername }
+        STATUS      current
+        DESCRIPTION
+            "Storage limit reached"
+        ::= { notifyEvts  133}
+		
+    notifyUnsupportedUPSDevice        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Unsupported UPS device"
+        ::= { notifyEvts  134}
+		
+    notifyEthernetConnectedAt10MOr100M        NOTIFICATION-TYPE
+		OBJECTS { notifyInterfaceNum }
+        STATUS      current
+        DESCRIPTION
+            "Connection speed will be limited due to connecting at 10/100 Mbps Ethernet."
+        ::= { notifyEvts  135}
+		
+    notify50PercentUPSPowerLeft        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system is running on UPS power with 50% power left."
+        ::= { notifyEvts  136}
+    
+    notify15PercentUPSPowerLeft        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The system is running on UPS power with 15% power left."
+        ::= { notifyEvts  137}
+    
+    notifyUPSOutofPower        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The UPS power is running out."
+        ::= { notifyEvts  138}		
+
+    notifyFileSystemErrorCorrected        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "File system check has detected and corrected errors on your configuration."
+        ::= { notifyEvts  139}		
+		
+    notifyUnsupportedFileSystem        NOTIFICATION-TYPE
+		OBJECTS { notifyVendor, notifyModel, notifySerialNumber, notifyFileSystem, notifyLabel }
+        STATUS      current
+        DESCRIPTION
+            "An unsupported file system has been detected on a USB device."
+        ::= { notifyEvts  140}
+		
+    notifyUnsupportedDrive        NOTIFICATION-TYPE
+		OBJECTS { notifyBayNum }
+        STATUS      current
+        DESCRIPTION
+            "Unsupported Drive."
+        ::= { notifyEvts  141}
+		
+    notifyDriveFailed        NOTIFICATION-TYPE
+        OBJECTS { notifyBayNum }
+        STATUS      current
+        DESCRIPTION
+            "Drive failed."
+        ::= { notifyEvts  142}
+    
+    notifyDriveAboutToFail        NOTIFICATION-TYPE
+        OBJECTS { notifyBayNum }
+        STATUS      current
+        DESCRIPTION
+            "Drive is about to fail."
+        ::= { notifyEvts  145}
+    
+    notifyVolumeDegraded        NOTIFICATION-TYPE
+        OBJECTS { notifyVolumeNum }
+        STATUS      current
+        DESCRIPTION
+            "Volume Degraded."
+        ::= { notifyEvts  146}
+		
+    notifyVolumeMigration        NOTIFICATION-TYPE
+        OBJECTS { notifyVolumeNum, notifyPercent }
+        STATUS      current
+        DESCRIPTION
+            "Volume migration."
+        ::= { notifyEvts  147}
+		
+    notifyVolumeRebuilding        NOTIFICATION-TYPE
+        OBJECTS { notifyVolumeNum , notifyMinutes }
+        STATUS      current
+        DESCRIPTION
+            "Volume Rebuilding."
+        ::= { notifyEvts  148}
+		
+    notifyVolumeRebuildFailed        NOTIFICATION-TYPE
+        OBJECTS { notifyVolumeNum }
+        STATUS      current
+        DESCRIPTION
+            "The volume rebuild has failed."
+        ::= { notifyEvts  150}
+    
+    notifyVolumeExpansionFailed        NOTIFICATION-TYPE
+        OBJECTS { notifyVolumeNum }
+        STATUS      current
+        DESCRIPTION
+            "The volume expansion failed."
+        ::= { notifyEvts  151}
+		
+    notifyDriveInserted        NOTIFICATION-TYPE
+		OBJECTS { notifyBayNum }
+        STATUS      current
+        DESCRIPTION
+            "A new drive has been inserted."
+        ::= { notifyEvts  152}
+		
+    notifyDriveRemoved        NOTIFICATION-TYPE
+		OBJECTS { notifyBayNum }
+        STATUS      current
+        DESCRIPTION
+            "Drive removed."
+        ::= { notifyEvts  153}
+
+    notifyRAIDRoamingEnabled        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "RAID roaming enabled."
+        ::= { notifyEvts  154}
+		
+    notifyNoDrivesInstalled        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "There are no drives installed."
+        ::= { notifyEvts  155}    
+		
+    notifyHotSpareDriveAddedIntoRAID        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Hot Spare Drive added into RAID Array."
+        ::= { notifyEvts  156}
+		
+    notifyRAIDMigrationCompleted        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "RAID migration completed"
+        ::= { notifyEvts  157}
+		
+    notifyRAIDRebuildCompleted        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "RAID rebuild completed"
+        ::= { notifyEvts  158}
+
+    notifyNonWDRedNASDriveInserted        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Non-WD Red NAS Drive inserted."
+        ::= { notifyEvts  159}
+
+    notifyVolumeIsFormatted        NOTIFICATION-TYPE
+		OBJECTS { notifyVolumeNum }
+        STATUS      current
+        DESCRIPTION
+            "Volume is formatted."
+        ::= { notifyEvts  160}		
+
+    notifyExpandingVolumeProgress        NOTIFICATION-TYPE
+		OBJECTS { notifyVolumeNum, notifyPercent }
+        STATUS      current
+        DESCRIPTION
+            "Volume expanding."
+        ::= { notifyEvts  161}
+		
+	notifyReplaceDrive        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "Replace drive"
+        ::= { notifyEvts  162}
+
+    notifyMediaScanStopped        NOTIFICATION-TYPE
+        STATUS      current
+        DESCRIPTION
+            "The device stopped scanning your media. As a result, some thumbnails will not display when you access it remotely. To resume scanning, please restart your WD My Cloud device."
+        ::= { notifyEvts  163}
+
+
+
+
+
+
+
+
+--              ******************************************************
+
+--              ******************************************************
+
+
+	END
+
+--
+-- MYCLOUDEX2ULTRA.mib
+--

@@ -4,6 +4,11 @@ set -e
 # ========================================================
 # Observium Docker Deployment for Raspberry Pi
 # Avoids NAS permission issues by using Docker volumes
+#
+# Safe to re-run on a live host (idempotent):
+#   - Existing MariaDB data is never overwritten from the NAS dump
+#   - Image rebuild is skipped (overlay is bind-mounted); OBSERVIUM_FORCE_BUILD=1 to override
+#   - WD My Cloud overlay is bind-mounted from this git repo
 # ========================================================
 
 # --- LOAD LOCAL SECRETS (not committed to git) ---
@@ -27,18 +32,41 @@ DB_DUMP="${MOUNT_POINT}/container_storage/observium/backups/observium_devices.sq
 SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:?ERROR: SLACK_WEBHOOK_URL not set. Create a .env file with SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...}"
 CURRENT_IP=$(hostname -I | awk '{print $1}')
 
+EXISTING_STACK=0
+if command -v docker >/dev/null 2>&1; then
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx observium-db || \
+       sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx observium-db; then
+        EXISTING_STACK=1
+    fi
+fi
+
 echo "========================================================"
 echo "   Observium Docker Deployment"
 echo "   DB: Local SD Card | RRD/Logs: NAS"
+if [ "$EXISTING_STACK" -eq 1 ]; then
+    echo "   Mode: LIVE UPDATE (existing stack will not be wiped)"
+else
+    echo "   Mode: FRESH INSTALL (restore DB dump if present)"
+fi
 echo "========================================================"
 
 # ========================================================
 # 1. SYSTEM PREP & DOCKER INSTALLATION
 # ========================================================
 
-echo "--> Updating system and installing dependencies..."
-apt-get update -y
-apt-get install -y ca-certificates curl gnupg lsb-release nfs-common snmpd
+if [ "$EXISTING_STACK" -eq 1 ]; then
+    echo "--> Live update: skipping apt-get update / Docker install"
+    for pkg in nfs-common snmpd; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            apt-get update -y
+            apt-get install -y "$pkg"
+        fi
+    done
+else
+    echo "--> Updating system and installing dependencies..."
+    apt-get update -y
+    apt-get install -y ca-certificates curl gnupg lsb-release nfs-common snmpd
+fi
 
 # Check if Docker is already installed
 if ! command -v docker &> /dev/null; then
@@ -122,23 +150,23 @@ echo "--> Configuring SNMP on host..."
 # Ensure snmpd config directory exists
 mkdir -p /etc/snmp
 
-# Backup existing config if it exists
-if [ -f /etc/snmp/snmpd.conf ]; then
-    cp /etc/snmp/snmpd.conf /etc/snmp/snmpd.conf.bak || true
-fi
-
-# Configure SNMP
-cat > /etc/snmp/snmpd.conf <<'SNMPEOF'
-# SNMP Configuration for Observium monitoring
+SNMP_CONF_CONTENT='# SNMP Configuration for Observium monitoring
 agentAddress  udp:161
 rocommunity cumbria
-SNMPEOF
+'
 
-# Restart SNMP service
-systemctl restart snmpd || true
-systemctl enable snmpd || true
-
-echo "✅ SNMP configured on host (community: cumbria, port: 161)"
+if [ -f /etc/snmp/snmpd.conf ] && [ "$(cat /etc/snmp/snmpd.conf)" = "$SNMP_CONF_CONTENT" ]; then
+    echo "--> SNMP config unchanged, not restarting snmpd"
+    systemctl enable snmpd >/dev/null 2>&1 || true
+else
+    if [ -f /etc/snmp/snmpd.conf ]; then
+        cp /etc/snmp/snmpd.conf /etc/snmp/snmpd.conf.bak || true
+    fi
+    printf '%s' "$SNMP_CONF_CONTENT" > /etc/snmp/snmpd.conf
+    systemctl restart snmpd || true
+    systemctl enable snmpd || true
+    echo "✅ SNMP configured on host (community: cumbria, port: 161)"
+fi
 
 # ========================================================
 # 3. CREATE APPLICATION DIRECTORY
@@ -147,6 +175,15 @@ echo "✅ SNMP configured on host (community: cumbria, port: 161)"
 mkdir -p "$APP_DIR"
 chown "$PI_USER":"$PI_USER" "$APP_DIR"
 cd "$APP_DIR"
+
+echo "--> Installing WD My Cloud Observium overlay from git repo..."
+if [ -d "$SCRIPT_DIR/observium/custom" ]; then
+    mkdir -p "$APP_DIR/custom"
+    cp -a "$SCRIPT_DIR/observium/custom/." "$APP_DIR/custom/"
+    chmod +x "$APP_DIR/custom/install-into-container.sh"
+else
+    echo "⚠️  observium/custom missing from $SCRIPT_DIR — WD temperatures will not be discovered"
+fi
 
 # ========================================================
 # 4. CREATE DOCKERFILE
@@ -194,6 +231,13 @@ RUN wget http://www.observium.org/observium-community-latest.tar.gz && \
 # Create Python symlink for wrapper
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
+# Home-ops overlay (bind-mounted at runtime; COPY is the rebuild fallback)
+COPY custom /opt/home-ops
+RUN mkdir -p /opt/observium/mibs/wd /opt/observium/includes/discovery/sensors && \
+    cp -f /opt/home-ops/mibs/MYCLOUDEX2ULTRA-MIB.txt /opt/observium/mibs/wd/ && \
+    cp -f /opt/home-ops/includes/discovery/sensors/mycloudex2ultra-mib.inc.php /opt/observium/includes/discovery/sensors/ && \
+    chmod +x /opt/home-ops/install-into-container.sh
+
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -221,7 +265,16 @@ cat <<CONF > /opt/observium/config.php
 \$config['db_name']      = getenv('OBSERVIUM_DB_NAME');
 \$config['base_url']     = getenv('OBSERVIUM_BASE_URL');
 \$config['fping']        = "/usr/bin/fping";
+\$config['os']['linux']['mibs'][] = 'MYCLOUDEX2ULTRA-MIB';
+\$config['mibs']['MYCLOUDEX2ULTRA-MIB']['enable'] = 1;
+\$config['mibs']['MYCLOUDEX2ULTRA-MIB']['mib_dir'] = 'wd';
+\$config['mibs']['MYCLOUDEX2ULTRA-MIB']['identity_num'] = '.1.3.6.1.4.1.5127.1.1.1.8';
 CONF
+
+# Apply WD My Cloud overlay before chown (chown of includes/ can take a while on a Pi).
+if [ -f /opt/home-ops/install-into-container.sh ]; then
+    bash /opt/home-ops/install-into-container.sh || echo "Warning: home-ops overlay install failed"
+fi
 
 # Ensure directories exist (rrd and logs are NAS-mounted, don't chown them)
 mkdir -p /opt/observium/rrd /opt/observium/logs
@@ -340,6 +393,11 @@ services:
       # RRD and logs on NAS (large files, Docker handles permissions)
       - ${MOUNT_POINT}/container_storage/observium/rrd:/opt/observium/rrd
       - ${MOUNT_POINT}/container_storage/observium/logs:/opt/observium/logs
+      # WD My Cloud overlay from git (survives image rebuild; live-updated on re-run)
+      - ./custom:/opt/home-ops:ro
+      - ./custom/includes/discovery/sensors/mycloudex2ultra-mib.inc.php:/opt/observium/includes/discovery/sensors/mycloudex2ultra-mib.inc.php:ro
+      - ./custom/mibs/MYCLOUDEX2ULTRA-MIB.txt:/opt/observium/mibs/wd/MYCLOUDEX2ULTRA-MIB.txt:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
     depends_on:
       db:
         condition: service_healthy
@@ -349,10 +407,23 @@ EOF
 # 7. BUILD AND START CONTAINERS
 # ========================================================
 
-echo "--> Building Docker image (this may take several minutes on Pi)..."
-sudo docker compose build
+IMAGE_SRC_HASH=$(cat Dockerfile entrypoint.sh | sha256sum | awk '{print $1}')
 
-echo "--> Starting containers..."
+if [ "$EXISTING_STACK" -eq 1 ]; then
+    echo "--> Live update: not rebuilding the image (overlay is bind-mounted)"
+    echo "    Set OBSERVIUM_FORCE_BUILD=1 to rebuild anyway"
+    if [ "${OBSERVIUM_FORCE_BUILD:-0}" = "1" ]; then
+        echo "--> OBSERVIUM_FORCE_BUILD=1; rebuilding image..."
+        sudo docker compose build
+        echo "$IMAGE_SRC_HASH" > .image-src-hash
+    fi
+else
+    echo "--> Building Docker image (this may take several minutes on Pi)..."
+    sudo docker compose build
+    echo "$IMAGE_SRC_HASH" > .image-src-hash
+fi
+
+echo "--> Starting / updating containers (db volume is never removed)..."
 sudo docker compose up -d
 
 # ========================================================
@@ -382,14 +453,24 @@ fi
 echo "--> Database is ready!"
 
 # ========================================================
-# 9. RESTORE DATABASE FROM BACKUP (if exists)
+# 9. RESTORE DATABASE FROM BACKUP (fresh installs only)
 # ========================================================
 
-if [ -f "$DB_DUMP" ]; then
+TABLE_COUNT=$(sudo docker exec -e MYSQL_PWD="${MYSQL_ROOT_PASS}" observium-db \
+    mysql -N -u root -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='observium'" 2>/dev/null || echo 0)
+TABLE_COUNT=$(echo "$TABLE_COUNT" | tr -dc '0-9')
+TABLE_COUNT=${TABLE_COUNT:-0}
+
+if [ "$TABLE_COUNT" -gt 5 ]; then
+    echo "--> Database already populated (${TABLE_COUNT} tables); skipping restore"
+elif [ -f "$DB_DUMP" ]; then
     echo "--> Restoring database from NAS backup..."
-    # Use MYSQL_PWD environment variable for non-interactive password
     sudo docker exec -i -e MYSQL_PWD="${MYSQL_ROOT_PASS}" observium-db mysql -u root observium < "$DB_DUMP"
     echo "✅ Database restored from backup"
+    TABLE_COUNT=$(sudo docker exec -e MYSQL_PWD="${MYSQL_ROOT_PASS}" observium-db \
+        mysql -N -u root -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='observium'" 2>/dev/null || echo 0)
+    TABLE_COUNT=$(echo "$TABLE_COUNT" | tr -dc '0-9')
+    TABLE_COUNT=${TABLE_COUNT:-0}
 else
     echo "⚠️  No database backup found at $DB_DUMP"
     echo "   Starting with fresh database..."
@@ -434,13 +515,17 @@ fi
 # 11. CREATE ADMIN USER
 # ========================================================
 
-echo "--> Creating Observium admin user..."
-sleep 5  # Give Observium app a moment to fully start
+if [ "$EXISTING_STACK" -eq 1 ] || [ "$TABLE_COUNT" -gt 5 ]; then
+    echo "--> Skipping admin user creation (existing install)"
+else
+    echo "--> Creating Observium admin user..."
+    sleep 5  # Give Observium app a moment to fully start
 
-sudo docker exec observium-app /opt/observium/adduser.php "${OBSERVIUM_ADMIN_USER}" "${OBSERVIUM_ADMIN_PASS}" 10 || {
-    echo "⚠️  Warning: Admin user creation may have failed. You can create it manually:"
-    echo "   sudo docker exec observium-app /opt/observium/adduser.php admin password 10"
-}
+    sudo docker exec observium-app /opt/observium/adduser.php "${OBSERVIUM_ADMIN_USER}" "${OBSERVIUM_ADMIN_PASS}" 10 || {
+        echo "⚠️  Warning: Admin user creation may have failed. You can create it manually:"
+        echo "   sudo docker exec observium-app /opt/observium/adduser.php admin password 10"
+    }
+fi
 
 # ========================================================
 # 12. SETUP CRON JOBS (on host, not container)
@@ -566,8 +651,35 @@ echo "Health check installed with Slack notifications"
 # 13. INITIALIZE OBSERVIUM DATABASE
 # ========================================================
 
+echo "--> Waiting for Observium app (overlay + Apache)..."
+WAIT_APP=30
+while [ $WAIT_APP -gt 0 ]; do
+    if sudo docker exec observium-app grep -q HOMEOPS_WD_CENTIGRADE /opt/observium/includes/snmp.inc.php 2>/dev/null; then
+        break
+    fi
+    if sudo docker exec observium-app pgrep apache2 >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+    WAIT_APP=$((WAIT_APP-1))
+done
+
 echo "--> Initializing Observium database schema..."
 sudo docker exec observium-app /opt/observium/discovery.php -u
+
+echo "--> Discovering WD My Cloud temperature sensors..."
+# Recreate is done; overlay is mounted. Force sensor discovery on NAS2 if present.
+NAS_HOSTS=$(sudo docker exec -e MYSQL_PWD="${MYSQL_ROOT_PASS}" observium-db \
+    mysql -N -u root observium -e "SELECT hostname FROM devices WHERE hostname LIKE '%nas2%' OR hostname LIKE '%NAS2%';" 2>/dev/null || true)
+if [ -n "$NAS_HOSTS" ]; then
+    while IFS= read -r nas_host; do
+        [ -z "$nas_host" ] && continue
+        echo "    discovery.php -h ${nas_host} -m sensors"
+        sudo docker exec observium-app /opt/observium/discovery.php -h "$nas_host" -m sensors || true
+    done <<< "$NAS_HOSTS"
+else
+    echo "    No nas2 device in DB yet; sensors will appear on the next scheduled discovery"
+fi
 
 # ========================================================
 # COMPLETION
@@ -583,6 +695,8 @@ echo "   Pass: ${OBSERVIUM_ADMIN_PASS}"
 echo ""
 echo "   Database: Local SD card (${APP_DIR}/mysql_data)"
 echo "   RRD/Logs: NAS (${MOUNT_POINT}/container_storage/observium/)"
+echo ""
+echo "   Overlay: WD My Cloud temps (bind-mounted from git observium/custom/)"
 echo ""
 echo "   To view logs: sudo docker logs observium-app"
 echo "   To view DB logs: sudo docker logs observium-db"
